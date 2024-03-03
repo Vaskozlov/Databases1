@@ -96,24 +96,24 @@ VALUES (1, 3),
 -- Запрос возвращает таблицу, где A может слышать B и B может слышать A. (a, b) in HEAR_EACH_OTHER && (b, a) in HEAR_EACH_OTHER
 CREATE FUNCTION hear_each_other() RETURNS SETOF integer AS
 $$
-SELECT DISTINCT FIRST_CREATURE
+SELECT DISTINCT A.FIRST_CREATURE
 FROM HEAR_EACH_OTHER A
-WHERE A.FIRST_CREATURE in (SELECT SECOND_CREATURE FROM HEAR_EACH_OTHER B WHERE B.FIRST_CREATURE = A.SECOND_CREATURE)
+         INNER JOIN HEAR_EACH_OTHER B ON A.FIRST_CREATURE = B.SECOND_CREATURE
 $$ LANGUAGE SQL;
 
 -- Запрос возвращает таблицу, где враждуют A c B и B с A. (a, b) in ENEMIES && (b, a) in ENEMIES
 CREATE FUNCTION two_side_enemies() RETURNS SETOF integer AS
 $$
-SELECT DISTINCT CREATURE_ID
+SELECT DISTINCT A.CREATURE_ID
 FROM ENEMIES A
-WHERE A.CREATURE_ID IN (SELECT ENEMY_ID FROM ENEMIES B WHERE B.CREATURE_ID = A.ENEMY_ID)
+         INNER JOIN ENEMIES B ON A.CREATURE_ID = B.ENEMY_ID
 $$ LANGUAGE SQL;
 
 CREATE FUNCTION two_side_enemies_but_do_not_hear_each_other() RETURNS SETOF integer AS
 $$
 SELECT DISTINCT E
 from two_side_enemies() E
-WHERE E NOT IN (SELECT * FROM hear_each_other())
+WHERE E NOT IN (SELECT 1 FROM hear_each_other())
 $$
     LANGUAGE SQL;
 
@@ -122,7 +122,7 @@ FROM HOMES
 WHERE HOMES.ID in
       (SELECT DISTINCT HOME_ID
        FROM ALIVE
-       where ALIVE.ID in (SELECT * FROM two_side_enemies_but_do_not_hear_each_other()));
+       where ALIVE.ID in (SELECT 1 FROM two_side_enemies_but_do_not_hear_each_other()));
 
 SELECT *
 FROM hear_each_other();
