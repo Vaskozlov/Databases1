@@ -1,0 +1,136 @@
+DROP FUNCTION IF EXISTS two_side_enemies;
+DROP FUNCTION IF EXISTS hear_each_other;
+DROP FUNCTION IF EXISTS two_side_enemies_but_do_not_hear_each_other;
+DROP TABLE IF EXISTS LOOKING_FOR;
+DROP TABLE IF EXISTS ENEMIES;
+DROP TABLE IF EXISTS HEAR_EACH_OTHER;
+DROP TABLE IF EXISTS STATUSES_OF_ALIVE;
+DROP TABLE IF EXISTS ALIVE;
+DROP TABLE IF EXISTS HOMES;
+DROP TABLE IF EXISTS OBJECTS;
+DROP TABLE IF EXISTS LOCATIONS;
+DROP TYPE IF EXISTS creature_type;
+
+CREATE TYPE creature_type AS ENUM ('human', 'dinosaur');
+
+CREATE TABLE IF NOT EXISTS LOCATIONS
+(
+    LOCATION_ID integer PRIMARY KEY,
+    IS_QUITE    boolean default TRUE,
+    COORDINATES point NOT NULL
+);
+
+CREATE TABLE OBJECTS
+(
+    ID          integer PRIMARY KEY,
+    NAME        VARCHAR(128),
+    LOCATION_ID integer REFERENCES LOCATIONS,
+    COORDINATES point DEFAULT NULL
+);
+
+CREATE TABLE HOMES
+(
+    LIKE OBJECTS INCLUDING ALL
+);
+
+CREATE TABLE IF NOT EXISTS ALIVE
+(
+    LIKE OBJECTS INCLUDING ALL,
+    TYPE    creature_type,
+    HOME_ID integer DEFAULT NULL REFERENCES HOMES
+);
+
+CREATE TABLE IF NOT EXISTS STATUSES_OF_ALIVE
+(
+    ID_OF_ALIVE   integer REFERENCES ALIVE UNIQUE,
+    IS_IN_TROUBLE boolean default FALSE
+);
+
+CREATE TABLE IF NOT EXISTS ENEMIES
+(
+    CREATURE_ID integer REFERENCES ALIVE,
+    ENEMY_ID    integer REFERENCES ALIVE,
+    PRIMARY KEY (CREATURE_ID, ENEMY_ID)
+);
+
+CREATE TABLE IF NOT EXISTS LOOKING_FOR
+(
+    SEARCHER_ID integer REFERENCES ALIVE,
+    TARGET_ID   integer REFERENCES ALIVE,
+    PRIMARY KEY (SEARCHER_ID, TARGET_ID)
+);
+
+CREATE TABLE IF NOT EXISTS HEAR_EACH_OTHER
+(
+    FIRST_CREATURE  integer REFERENCES ALIVE,
+    SECOND_CREATURE integer REFERENCES ALIVE,
+    PRIMARY KEY (FIRST_CREATURE, SECOND_CREATURE)
+);
+
+INSERT INTO LOCATIONS(LOCATION_ID, IS_QUITE, COORDINATES)
+VALUES (1, TRUE, '(0, 0)'),
+       (2, TRUE, '(100, 100)');
+
+INSERT INTO OBJECTS(ID, NAME, LOCATION_ID, COORDINATES)
+VALUES (1, 'hills', 2, NULL),
+       (2, 'cars', 1, '(1, 2)'),
+       (3, 'puddle', 1, '(0, 2)');
+
+INSERT INTO HOMES(ID, NAME, LOCATION_ID, COORDINATES)
+VALUES (5, 'Ed''s home', 1, NULL);
+
+insert into ALIVE(ID, NAME, LOCATION_ID, COORDINATES, TYPE, HOME_ID)
+VALUES (1, 'Ed', 1, '(1, 2)', 'human', 5),
+       (2, 'Girl', 1, NULL, 'human', NULL),
+       (3, 'Tyrannosaurus', 1, '(0, 25)', 'dinosaur', NULL);
+
+insert into STATUSES_OF_ALIVE(ID_OF_ALIVE, IS_IN_TROUBLE)
+VALUES (2, TRUE);
+
+insert into ENEMIES(CREATURE_ID, ENEMY_ID)
+VALUES (1, 3),
+       (3, 1),
+       (2, 3),
+       (3, 2);
+
+-- Запрос возвращает таблицу, где A может слышать B и B может слышать A. (a, b) in HEAR_EACH_OTHER && (b, a) in HEAR_EACH_OTHER
+CREATE FUNCTION hear_each_other() RETURNS SETOF integer AS
+$$
+SELECT DISTINCT FIRST_CREATURE
+FROM HEAR_EACH_OTHER A
+WHERE A.FIRST_CREATURE in (SELECT SECOND_CREATURE FROM HEAR_EACH_OTHER B WHERE B.FIRST_CREATURE = A.SECOND_CREATURE)
+$$ LANGUAGE SQL;
+
+-- Запрос возвращает таблицу, где враждуют A c B и B с A. (a, b) in ENEMIES && (b, a) in ENEMIES
+CREATE FUNCTION two_side_enemies() RETURNS SETOF integer AS
+$$
+SELECT DISTINCT CREATURE_ID
+FROM ENEMIES A
+WHERE A.CREATURE_ID IN (SELECT ENEMY_ID FROM ENEMIES B WHERE B.CREATURE_ID = A.ENEMY_ID)
+$$ LANGUAGE SQL;
+
+CREATE FUNCTION two_side_enemies_but_do_not_hear_each_other() RETURNS SETOF integer AS
+$$
+SELECT DISTINCT E
+from two_side_enemies() E
+WHERE E NOT IN (SELECT * FROM hear_each_other())
+$$
+    LANGUAGE SQL;
+
+SELECT *
+FROM HOMES
+WHERE HOMES.ID in
+      (SELECT DISTINCT HOME_ID
+       FROM ALIVE
+       where ALIVE.ID in (SELECT * FROM two_side_enemies_but_do_not_hear_each_other()));
+
+SELECT *
+FROM hear_each_other();
+
+SELECT *
+FROM two_side_enemies();
+
+SELECT *
+FROM two_side_enemies_but_do_not_hear_each_other();
+
+-- все дома где враждующие не слышали друг-друга.
